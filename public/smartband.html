@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Smartband — Crew</title>
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
+  <style>
+    :root {
+      --bg: #020617;
+      --band: #0f172a;
+      --screen: #1e293b;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #facc15;
+      --danger: #b91c1c;
+      --ok: #15803d;
+      --purple: #a855f7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(ellipse at top, #1e293b, var(--bg));
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1rem;
+    }
+    .strap {
+      width: 56px;
+      height: 28px;
+      background: #334155;
+      border-radius: 8px;
+      margin-bottom: -4px;
+    }
+    .device {
+      width: min(100%, 320px);
+      background: linear-gradient(145deg, #334155, #1e293b);
+      border-radius: 28px;
+      padding: 14px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    }
+    .bezel {
+      background: var(--screen);
+      border-radius: 20px;
+      padding: 12px;
+      min-height: 420px;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      text-align: center;
+      font-size: 0.65rem;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .conn {
+      font-size: 0.7rem;
+      text-align: center;
+      margin-bottom: 10px;
+      color: var(--muted);
+    }
+    .conn.on { color: #4ade80; }
+    .tasks { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+    .card {
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px;
+      padding: 12px;
+    }
+    .card.task .head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .card.task .bell { font-size: 1.2rem; }
+    .card.task .ico { font-size: 2rem; }
+    .card.task h3 { margin: 0; font-size: 1rem; }
+    .card.task .meta { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+    .card.alert-emergency {
+      border-color: rgba(239, 68, 68, 0.5);
+      background: rgba(127, 29, 29, 0.35);
+    }
+    .card.alert-lora { border-color: rgba(56, 189, 248, 0.4); }
+    .card h4 { margin: 0 0 6px; font-size: 0.85rem; }
+    .card p { margin: 0; font-size: 0.8rem; color: var(--muted); line-height: 1.35; }
+    .complete-btn {
+      width: 100%;
+      margin-top: 10px;
+      padding: 10px;
+      border: none;
+      border-radius: 10px;
+      background: var(--ok);
+      color: #fff;
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .complete-btn:disabled { opacity: 0.5; cursor: default; }
+    audio { width: 100%; margin-top: 8px; height: 36px; }
+    .actions {
+      margin-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .btn-row { display: flex; gap: 8px; }
+    .btn-snippet {
+      flex: 1;
+      padding: 10px;
+      border-radius: 10px;
+      border: none;
+      background: linear-gradient(180deg, #c084fc, var(--purple));
+      color: #fff;
+      font-weight: 600;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .btn-snippet.rec { background: linear-gradient(180deg,#eab308,#ca8a04); }
+    .btn-sos {
+      padding: 12px;
+      border-radius: 12px;
+      border: 2px solid #f87171;
+      background: var(--danger);
+      color: #fff;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .legend {
+      margin-top: 14px;
+      font-size: 0.68rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .empty {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+      padding: 2rem 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="strap" aria-hidden="true"></div>
+  <div class="device">
+    <div class="bezel">
+      <header>SMARTBAND · CREW</header>
+      <div class="conn" id="conn">Connecting…</div>
+      <div class="tasks" id="tasks"></div>
+      <div class="actions">
+        <div class="btn-row">
+          <button type="button" class="btn-snippet" id="btnVoice">🎙 Voice snippet</button>
+        </div>
+        <button type="button" class="btn-sos" id="btnSos">SOS</button>
+      </div>
+      <p class="legend">Receive tasks &amp; alerts · Voice alerts (local language) · Tap complete to notify bridge.</p>
+    </div>
+  </div>
+
+  <script>
+    const SOCKET_URL =
+      window.location.protocol === "file:" ? "http://127.0.0.1:3000" : undefined;
+    const socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
+    const tasksEl = document.getElementById("tasks");
+    const connEl = document.getElementById("conn");
+
+    const openTasks = new Map();
+
+    socket.on("connect", () => {
+      connEl.textContent = "Online — synced with bridge";
+      connEl.classList.add("on");
+    });
+    socket.on("disconnect", () => {
+      connEl.textContent = "Offline";
+      connEl.classList.remove("on");
+    });
+    socket.on("connect_error", () => {
+      connEl.textContent = "No server — run npm start in project folder, open http://127.0.0.1:3000/smartband";
+      connEl.classList.remove("on");
+    });
+
+    function cardEl(html) {
+      const wrap = document.createElement("div");
+      wrap.innerHTML = html;
+      return wrap.firstElementChild;
+    }
+
+    socket.on("task_assigned", (p) => {
+      const id = p.id;
+      if (openTasks.has(id)) return;
+      openTasks.set(id, p);
+      const el = cardEl(`
+        <div class="card task" data-id="${id}">
+          <div class="head">
+            <span class="bell">🔔</span>
+            <div>
+              <h3>New task</h3>
+              <div class="meta">${new Date(p.assignedAt || Date.now()).toLocaleTimeString()}</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <span class="ico">${p.icon || "📌"}</span>
+            <div><strong>${escapeHtml(p.label || p.taskKey)}</strong></div>
+          </div>
+          <button type="button" class="complete-btn">✓ Mark completed</button>
+        </div>
+      `);
+      el.querySelector(".complete-btn").addEventListener("click", () => {
+        socket.emit("task_complete", {
+          taskId: id,
+          taskKey: p.taskKey,
+          label: p.label,
+        });
+        openTasks.delete(id);
+        el.remove();
+        if (!tasksEl.children.length) tasksEl.innerHTML = '<div class="empty">No active items.</div>';
+      });
+      if (tasksEl.querySelector(".empty")) tasksEl.innerHTML = "";
+      tasksEl.prepend(el);
+    });
+
+    socket.on("emergency", (p) => {
+      if (tasksEl.querySelector(".empty")) tasksEl.innerHTML = "";
+      const el = cardEl(`
+        <div class="card alert-emergency">
+          <h4>🔊 Emergency</h4>
+          <p>${escapeHtml(p.message || "Alert")}</p>
+          <p style="margin-top:8px;font-size:0.72rem;">Voice alert (local language) — listen on deck.</p>
+        </div>
+      `);
+      tasksEl.prepend(el);
+    });
+
+    socket.on("voice_message_received", (p) => {
+      if (tasksEl.querySelector(".empty")) tasksEl.innerHTML = "";
+      const src = `data:${p.mimeType};base64,${p.data}`;
+      const el = cardEl(`
+        <div class="card">
+          <h4>🎙 ${escapeHtml(p.label || "Voice message")}</h4>
+          <audio controls src="${src}"></audio>
+        </div>
+      `);
+      tasksEl.prepend(el);
+    });
+
+    socket.on("lora_to_crew", (p) => {
+      if (tasksEl.querySelector(".empty")) tasksEl.innerHTML = "";
+      const el = cardEl(`
+        <div class="card alert-lora">
+          <h4>📡 LoRa</h4>
+          <p>${escapeHtml(p.label || p.kind || "Message")}</p>
+        </div>
+      `);
+      tasksEl.prepend(el);
+    });
+
+    function escapeHtml(s) {
+      const d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    if (!tasksEl.children.length) {
+      tasksEl.innerHTML = '<div class="empty">Waiting for assignments from the bridge…</div>';
+    }
+
+    document.getElementById("btnSos").addEventListener("click", () => {
+      if (!confirm("Send SOS to operator dashboard?")) return;
+      socket.emit("sos", { message: "Crew SOS — need assistance" });
+    });
+
+    let rec = null;
+    let chunks = [];
+    let recording = false;
+    const btnV = document.getElementById("btnVoice");
+    btnV.addEventListener("click", async () => {
+      if (!recording) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          chunks = [];
+          rec = new MediaRecorder(stream);
+          rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+          rec.onstop = () => {
+            stream.getTracks().forEach((t) => t.stop());
+            const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
+            const r = new FileReader();
+            r.onloadend = () => {
+              const b64 = r.result.split(",")[1];
+              socket.emit("crew_voice_snippet", {
+                mimeType: blob.type,
+                data: b64,
+                label: "Crew voice snippet",
+              });
+            };
+            r.readAsDataURL(blob);
+          };
+          rec.start();
+          recording = true;
+          btnV.textContent = "Stop & send";
+          btnV.classList.add("rec");
+        } catch {
+          alert("Microphone required.");
+        }
+      } else {
+        rec.stop();
+        recording = false;
+        btnV.textContent = "🎙 Voice snippet";
+        btnV.classList.remove("rec");
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Smart Crew — Operator Dashboard</title>
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --sidebar: #1e3a5f;
+      --panel: #1e293b;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --danger: #dc2626;
+      --ok: #16a34a;
+      --warn: #eab308;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+    }
+    aside {
+      width: 220px;
+      background: linear-gradient(180deg, var(--sidebar), #0f2744);
+      padding: 1.25rem 0;
+      flex-shrink: 0;
+    }
+    .brand {
+      padding: 0 1.25rem 1rem;
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.06em;
+      color: var(--accent);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      margin-bottom: 0.75rem;
+    }
+    nav a {
+      display: block;
+      padding: 0.65rem 1.25rem;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    nav a:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+    nav a.active { color: var(--text); background: rgba(56,189,248,0.15); border-left: 3px solid var(--accent); }
+    main { flex: 1; padding: 1.5rem 2rem; overflow: auto; }
+    h1 { font-size: 1.35rem; margin: 0 0 0.25rem; }
+    .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.25rem; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 0.75rem;
+      max-width: 720px;
+    }
+    .task-btn {
+      background: var(--panel);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 1rem 0.5rem;
+      color: var(--text);
+      cursor: pointer;
+      text-align: center;
+      transition: transform 0.12s, border-color 0.12s;
+    }
+    .task-btn:hover { transform: translateY(-2px); border-color: var(--accent); }
+    .task-btn .ico { font-size: 1.75rem; display: block; margin-bottom: 0.35rem; }
+    .task-btn span { font-size: 0.78rem; }
+    .row-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin: 1.5rem 0;
+      max-width: 720px;
+    }
+    .big-btn {
+      flex: 1;
+      min-width: 200px;
+      border: none;
+      border-radius: 14px;
+      padding: 1rem 1.25rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      color: #fff;
+    }
+    .big-btn.danger { background: linear-gradient(180deg, #ef4444, var(--danger)); }
+    .big-btn.ok { background: linear-gradient(180deg, #22c55e, var(--ok)); }
+    .big-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .lora {
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 14px;
+      padding: 1rem 1.25rem;
+      max-width: 720px;
+    }
+    .lora h2 { margin: 0 0 0.75rem; font-size: 1rem; color: var(--accent); }
+    .lora-btns { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .lora-btns button {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      color: var(--text);
+      padding: 0.5rem 0.9rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .lora-btns button:hover { background: rgba(56, 189, 248, 0.2); }
+    .feed {
+      margin-top: 2rem;
+      max-width: 900px;
+    }
+    .feed h2 { font-size: 1rem; margin-bottom: 0.5rem; }
+    #log {
+      background: var(--panel);
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.08);
+      max-height: 280px;
+      overflow-y: auto;
+      padding: 0.75rem;
+      font-size: 0.85rem;
+    }
+    .log-line { padding: 0.35rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); color: var(--muted); }
+    .log-line strong { color: var(--text); }
+    .log-line.sos { color: #fca5a5; }
+    .log-line.ok { color: #86efac; }
+    .status { font-size: 0.8rem; color: var(--muted); margin-top: 0.5rem; }
+    .status.connected { color: var(--ok); }
+  </style>
+</head>
+<body>
+  <aside>
+    <div class="brand">SMART CREW COORDINATION</div>
+    <nav>
+      <a href="#" class="active">Dashboard</a>
+      <a href="#">Assign Tasks</a>
+      <a href="#">Crew</a>
+      <a href="#">Messages</a>
+      <a href="#">Alerts</a>
+      <a href="#">LoRa Comm</a>
+      <a href="#">Settings</a>
+    </nav>
+  </aside>
+  <main>
+    <h1>Assign tasks</h1>
+    <p class="sub">Choose an icon to push a task to all connected smartband interfaces.</p>
+
+    <div class="grid" id="taskGrid"></div>
+
+    <div class="row-actions">
+      <button type="button" class="big-btn danger" id="btnEmergency">
+        <span>🔊</span> Emergency alert <small style="opacity:.85">(voice · local language)</small>
+      </button>
+      <button type="button" class="big-btn ok" id="btnVoiceToggle">
+        <span>🎙</span> <span id="voiceLabel">Voice message — record &amp; send</span>
+      </button>
+    </div>
+
+    <div class="lora">
+      <h2>Offshore communication (LoRa)</h2>
+      <div class="lora-btns">
+        <button type="button" data-lora="text">Text / data</button>
+        <button type="button" data-lora="voice">Voice message</button>
+        <button type="button" data-lora="status">Status check</button>
+      </div>
+    </div>
+
+    <div class="feed">
+      <h2>Incoming from crew</h2>
+      <div id="log"></div>
+      <p class="status" id="connStatus">Connecting…</p>
+    </div>
+  </main>
+
+  <script>
+    const TASKS = [
+      { key: "navigate", label: "Navigate", icon: "🧭" },
+      { key: "net_deploy", label: "Net deploy", icon: "⬇️" },
+      { key: "haul_net", label: "Haul net", icon: "⬆️" },
+      { key: "sort_catch", label: "Sort catch", icon: "🐟" },
+      { key: "engine_check", label: "Engine check", icon: "⚙️" },
+      { key: "equipment_check", label: "Equipment check", icon: "📋" },
+      { key: "safety_check", label: "Safety check", icon: "🛟" },
+      { key: "rest", label: "Rest", icon: "🛏️" },
+    ];
+
+    const SOCKET_URL =
+      window.location.protocol === "file:" ? "http://127.0.0.1:3000" : undefined;
+    const socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
+    const logEl = document.getElementById("log");
+    const connStatus = document.getElementById("connStatus");
+    const grid = document.getElementById("taskGrid");
+
+    TASKS.forEach((t) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "task-btn";
+      b.innerHTML = `<span class="ico">${t.icon}</span><span>${t.label}</span>`;
+      b.addEventListener("click", () => {
+        socket.emit("assign_task", {
+          taskKey: t.key,
+          label: t.label,
+          icon: t.icon,
+        });
+        log(`Sent task: <strong>${t.label}</strong>`, "");
+      });
+      grid.appendChild(b);
+    });
+
+    function log(html, cls) {
+      const div = document.createElement("div");
+      div.className = "log-line" + (cls ? " " + cls : "");
+      div.innerHTML = `${new Date().toLocaleTimeString()} — ${html}`;
+      logEl.prepend(div);
+    }
+
+    socket.on("connect", () => {
+      connStatus.textContent = "Connected — changes sync in real time.";
+      connStatus.classList.add("connected");
+    });
+    socket.on("disconnect", () => {
+      connStatus.textContent = "Disconnected — start the server and refresh.";
+      connStatus.classList.remove("connected");
+    });
+    socket.on("connect_error", () => {
+      connStatus.textContent =
+        "Cannot reach server. In a terminal: cd smart-crew-coordination && npm install && npm start — then open http://127.0.0.1:3000/ (not the .html file).";
+      connStatus.classList.remove("connected");
+    });
+
+    document.getElementById("btnEmergency").addEventListener("click", () => {
+      if (!confirm("Send emergency alert to all smartbands?")) return;
+      socket.emit("emergency_alert", {
+        message: "Emergency — all crew: follow safety procedure. Voice alert (local language) playing on band.",
+      });
+      log("You sent an <strong>emergency alert</strong>.", "");
+    });
+
+    let mediaRecorder = null;
+    let chunks = [];
+    let recording = false;
+    const btnVoice = document.getElementById("btnVoiceToggle");
+    const voiceLabel = document.getElementById("voiceLabel");
+
+    btnVoice.addEventListener("click", async () => {
+      if (!recording) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          chunks = [];
+          mediaRecorder = new MediaRecorder(stream);
+          mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size) chunks.push(e.data);
+          };
+          mediaRecorder.onstop = () => {
+            stream.getTracks().forEach((tr) => tr.stop());
+            const blob = new Blob(chunks, { type: mediaRecorder.mimeType || "audio/webm" });
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const base64 = reader.result.split(",")[1];
+              socket.emit("voice_message", {
+                mimeType: blob.type,
+                data: base64,
+                label: "Voice message from bridge",
+              });
+              log("Sent <strong>voice message</strong> to crew.", "");
+            };
+            reader.readAsDataURL(blob);
+          };
+          mediaRecorder.start();
+          recording = true;
+          voiceLabel.textContent = "Stop & send recording";
+          btnVoice.classList.remove("ok");
+          btnVoice.style.background = "linear-gradient(180deg,#ca8a04,#a16207)";
+        } catch (e) {
+          alert("Microphone permission is required to record.");
+        }
+      } else {
+        mediaRecorder.stop();
+        recording = false;
+        voiceLabel.textContent = "Voice message — record & send";
+        btnVoice.classList.add("ok");
+        btnVoice.style.background = "";
+      }
+    });
+
+    document.querySelectorAll("[data-lora]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const kind = btn.getAttribute("data-lora");
+        const labels = { text: "LoRa: text / data", voice: "LoRa: voice message", status: "LoRa: status check" };
+        socket.emit("lora_message", { kind, label: labels[kind] || kind });
+        log(`LoRa ping: <strong>${labels[kind]}</strong>`, "");
+      });
+    });
+
+    socket.on("task_completed", (p) => {
+      log(`Crew marked complete: <strong>${p.label || p.taskKey}</strong>`, "ok");
+    });
+    socket.on("sos_alert", (p) => {
+      log(`<strong>SOS</strong> — ${p.message || "Crew SOS"}`, "sos");
+    });
+    socket.on("crew_voice_to_operator", (p) => {
+      log("Received <strong>voice snippet</strong> from crew — play below.", "ok");
+      if (p.data && p.mimeType) {
+        const wrap = document.createElement("div");
+        wrap.className = "log-line ok";
+        wrap.innerHTML = `${new Date().toLocaleTimeString()} — <audio controls src="data:${p.mimeType};base64,${p.data}" style="width:100%;max-width:360px;vertical-align:middle"></audio>`;
+        logEl.prepend(wrap);
+      }
+    });
+  </script>
+</body>
+</html>

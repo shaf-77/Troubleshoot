@@ -1,0 +1,14 @@
+{
+  "name": "smart-crew-coordination",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Boat operator dashboard + smartband crew UI with Socket.io sync",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}
